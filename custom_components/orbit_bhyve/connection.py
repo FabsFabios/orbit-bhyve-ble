@@ -123,6 +123,10 @@ class BHyveBleConnection:
         subsequent frames."""
         self._plaintext_observer = observer
 
+    def set_plaintext_observer(self, cb) -> None:
+        """Register a callback invoked with each decrypted notification plaintext."""
+        self._plaintext_observer = cb
+
     async def ensure_connected(self) -> None:
         """Connect + handshake if not already pooled. _open() retries the whole
         connect+handshake OPEN_MAX_ATTEMPTS times internally: on a marginal proxy
