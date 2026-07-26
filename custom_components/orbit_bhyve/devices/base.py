@@ -205,6 +205,8 @@ class DeviceState:
     flow_total: int | None = None  # #59.#3 raw cumulative counter (transient; feeds flow_gpm)
     flow_gpm: float | None = None  # instantaneous flow rate from read_flow's slope (Gen2)
     flow_gpm_device: float | None = None  # #59.#4 device-reported gpm float (unconfirmed on HW)
+    flow_lpm_gen1: float | None = None
+    water_used_gen1_l: float | None = None
     started_at: datetime | None = None
     expected_off_at: datetime | None = None
     last_command_at: datetime | None = None

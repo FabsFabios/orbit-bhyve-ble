@@ -26,6 +26,7 @@ from homeassistant.const import (
     UnitOfVolume,
     UnitOfVolumeFlowRate,
 )
+
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -94,6 +95,9 @@ async def async_setup_entry(
             entities.append(BHyveFlowRateSensor(coord))
             entities.append(BHyveWaterUsedSensor(coord))
             entities.append(BHyveDeviceFlowRateSensor(coord))
+        if getattr(device, "has_flow_gen1", False):
+            entities.append(BHyveGen1FlowRateSensor(coord))
+            entities.append(BHyveGen1WaterUsedSensor(coord))
     async_add_entities(entities)
 
 
@@ -218,7 +222,6 @@ class BHyveFlowRateSensor(_BHyveDeviceSensorBase):
     def native_value(self) -> float | None:
         state = self.coordinator.data or self.coordinator.device.state
         return state.flow_gpm
-
 
 class BHyveWaterUsedSensor(_RestoreLastValueSensor):
     """Cumulative water used (gallons), integrated from the flow gauge (Gen2).
@@ -420,6 +423,36 @@ class BHyveNextRunSensor(_BHyveDeviceSensorBase):
         slots = [SLOT_LETTERS[b + 1] for b in range(6) if flags & (1 << b) and (b + 1) in SLOT_LETTERS]
         return {"programs": slots}
 
+class BHyveGen1FlowRateSensor(_BHyveDeviceSensorBase):
+    _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:water-flow"
+
+    def __init__(self, coordinator: BHyveDeviceCoordinator):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.device.unique_id}_flow_rate_lpm"
+        self._attr_name = "Flow rate"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.device.state.flow_lpm_gen1
+
+
+class BHyveGen1WaterUsedSensor(_BHyveDeviceSensorBase):
+    _attr_device_class = SensorDeviceClass.VOLUME
+    _attr_native_unit_of_measurement = UnitOfVolume.LITERS
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_icon = "mdi:water"
+
+    def __init__(self, coordinator: BHyveDeviceCoordinator):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.device.unique_id}_water_used_l"
+        self._attr_name = "Water used"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.device.state.water_used_gen1_l
 
 class BHyveProgramSummarySensor(_BHyveDeviceSensorBase):
     """Read-only summary of one program slot (A–D). State is enabled/disabled/empty;

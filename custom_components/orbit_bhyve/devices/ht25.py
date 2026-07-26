@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+import struct
 
 from bleak.exc import BleakError
 
@@ -104,6 +105,7 @@ class BHyveHT25Device(BHyveBleDeviceBase):
         return self._build(type_byte, SEQ_WATER_CTRL, b"\x02\x00\x00\x00")
 
     def _observe_plaintext(self, pt: bytes) -> None:
+        self.apply_gen1_flow_frame(pt)
         """Drive the local off-timer from the device's own command ack.
 
         The watering command keeps the entity honest even when the GATT
@@ -299,3 +301,74 @@ class BHyveHT25Device(BHyveBleDeviceBase):
         fresh connect here — the on-demand refresh #24 dropped when it stopped
         forcing a connect on the button."""
         await self._connect_refresh()
+
+    has_flow_gen1 = True
+    flow_counts_per_litre = 112       # HT25 fw0085, measured 2026-07-20
+
+    def _flow_subscribe_frame(self) -> bytes:
+        # Captured reference frame from vendor app: 91eb 89 0e 40 e803 1e00
+        #   type=0x89, seq=0x0E, payload = interval_ms(1000 LE) + sample_count(30 LE)
+        # Deployed value below (3000ms, 700 samples ≈ 35 min budget) is intentionally
+        # larger than the captured reference to survive a full 30-min watering
+        # program without hitting the sample-count ceiling (subscription cannot be
+        # renewed mid-run — device acks a re-subscribe but stays silent afterward).
+        payload = struct.pack("<HH", 3000, 700)
+        return self._build(0x89, 0x0E, payload)
+
+    def reset_gen1_flow(self) -> None:
+        self._gen1_last_ctr = None
+        self._gen1_last_t = None
+        self._gen1_total_ticks = 0
+        self.state.flow_lpm_gen1 = None
+        self.state.water_used_gen1_l = None
+
+    def apply_gen1_flow_frame(self, pt: bytes) -> bool:
+        if self.mesh_device_id is None:
+            # No mesh id in the cloud record means there is no address to match
+            # against, so no frame can be attributed to this device. Bail before
+            # touching mesh_address, which raises rather than returning None.
+            return False
+        if len(pt) < 11 or pt[0:2] != self.mesh_address or pt[3] != 0x0b:
+            return False
+        import time
+        ctr = struct.unpack("<H", pt[9:11])[0]
+        now = time.monotonic()
+        prev_ctr = getattr(self, "_gen1_last_ctr", None)
+        prev_t = getattr(self, "_gen1_last_t", None)
+        if prev_ctr is not None and prev_t is not None:
+            inc = (ctr - prev_ctr) % 65536
+            dt = now - prev_t
+            if 0 < inc < 30000:
+                self._gen1_total_ticks = getattr(self, "_gen1_total_ticks", 0) + inc
+                if 0.5 < dt < 5.0:
+                    self.state.flow_lpm_gen1 = round(
+                        (inc / dt) * 60.0 / self.flow_counts_per_litre, 1)
+                self.state.water_used_gen1_l = round(
+                    self._gen1_total_ticks / self.flow_counts_per_litre, 2)
+                self._notify_state_changed()
+        self._gen1_last_ctr = ctr
+        self._gen1_last_t = now
+        return True
+
+    async def start_flow_subscription(self) -> None:
+        import asyncio
+        self.reset_gen1_flow()
+        async def _loop():
+            try:
+                # Send once immediately. is_watering may not be set yet — it's
+                # populated by the status decode on a later notification, so
+                # gating the FIRST send on it would skip the subscribe entirely.
+                frame = self._flow_subscribe_frame()
+                _LOGGER.debug("%s: sending flow subscribe: %s", self.mac, frame.hex())
+                await self.connection.send(frame, drain_ms=1200)
+            except asyncio.CancelledError:
+                pass
+            except Exception as err:
+                _LOGGER.warning("%s: flow subscription ended: %s", self.mac, err)
+        self._flow_sub_task = self.hass.async_create_task(_loop())
+
+    async def stop_flow_subscription(self) -> None:
+        task = getattr(self, "_flow_sub_task", None)
+        if task is not None:
+            task.cancel()
+            self._flow_sub_task = None

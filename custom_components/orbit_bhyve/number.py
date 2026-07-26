@@ -47,8 +47,57 @@ async def async_setup_entry(
         # Rain delay is a protobuf-family (HT34A/HT25G2) capability.
         if isinstance(coord.device, BHyveProtobufDevice):
             entities.append(BHyveRainDelayNumber(coord))
+        # Flow calibration — Gen1 (HT25) devices with an inline flow sensor.
+        if getattr(coord.device, "has_flow_gen1", False):
+            entities.append(BHyveFlowCalibrationNumber(coord))
     async_add_entities(entities)
 
+class BHyveFlowCalibrationNumber(CoordinatorEntity[BHyveDeviceCoordinator], RestoreNumber):
+    """Per-device flow calibration in sensor counts per litre.
+
+    The HT25's flow meter reports raw tick counts; counts-per-litre converts
+    them to volume. Varies between units, so it's per-device and user-tunable:
+    run a known volume, compare Water used against reality, scale accordingly.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Flow calibration"
+    _attr_icon = "mdi:water-percent"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_min_value = 50
+    _attr_native_max_value = 500
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "counts/L"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: BHyveDeviceCoordinator):
+        super().__init__(coordinator)
+        device = coordinator.device
+        self._attr_unique_id = f"{device.unique_id}_flow_calibration"
+        self._attr_native_value = float(device.flow_counts_per_litre)
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, device.cloud_id)},
+            "name": device.name,
+            "manufacturer": "Orbit Irrigation",
+            "model": device.hardware,
+            "sw_version": device.firmware,
+            "connections": {("mac", device.mac)} if device.mac else set(),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_number_data()
+        if last is None or last.native_value is None:
+            return
+        value = max(50, min(500, int(last.native_value)))
+        self._attr_native_value = float(value)
+        self.coordinator.device.flow_counts_per_litre = value
+
+    async def async_set_native_value(self, value: float) -> None:
+        value = max(50, min(500, int(value)))
+        self._attr_native_value = float(value)
+        self.coordinator.device.flow_counts_per_litre = value
+        self.async_write_ha_state()
 
 class BHyveDurationNumber(CoordinatorEntity[BHyveDeviceCoordinator], RestoreNumber):
     _attr_has_entity_name = True
