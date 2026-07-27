@@ -28,3 +28,35 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: ljmerza/misc-actions/actions/python-test@main
+        with:
+          python-version: "3.13"
+          requirements-file: tests/requirements-test.txt
+
+  tests-ha:
+    name: Tests (HA plugin)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      # The suite itself needs no Home Assistant (see tests/requirements-test.txt),
+      # and the `tests` job above proves that stays true. This job additionally
+      # installs the HA test plugin, whose autouse fixtures (verify_cleanup,
+      # socket blocking, lingering-timer detection) catch a class of defect the
+      # bare suite cannot see — e.g. a test that monkeypatches a stdlib global
+      # and leaves it in a broken state. Pinned because the plugin pulls an
+      # exact homeassistant version and pins pytest itself.
+      - uses: ljmerza/misc-actions/actions/python-test@main
+        with:
+          python-version: "3.13"
+          requirements-file: tests/requirements-test.txt
+          extra-packages: pytest-homeassistant-custom-component==0.13.205
+          # homeassistant pins aiohasupervisor==0.2.2b5, which uv rejects by default.
+          prerelease: allow
