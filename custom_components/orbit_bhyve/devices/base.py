@@ -252,6 +252,25 @@ class BHyveBleDeviceBase(abc.ABC):
     # idle tick); applied from the options flow by __init__.py. The protobuf
     # family ignores it — its poll already connects.
     active_status_poll: bool = False
+    # Gen1 (d7-47 / HT25) inline flow meter, read via the undocumented 0x89
+    # subscription. Distinct from has_flow above: different protocol, different
+    # units, different frame family.
+    has_flow_gen1: bool = False
+    # Counts->litres for the Gen1 meter. Per-unit; overridden at runtime by the
+    # per-device Flow calibration entity. Four fw0085 timers calibrated against
+    # the vendor app measured 113-118; 112 is a conservative default that
+    # over-reports slightly until calibrated.
+    flow_counts_per_litre: int = 112
+    # Per-device opt-in for Gen1 flow measurement, default OFF. Measuring holds
+    # the timer's single BLE session open for the whole program and re-subscribes
+    # every 240 s — more radio-on time than active_status_poll above, and it
+    # locks the B-hyve app out for the duration. Set by the per-device switch.
+    flow_gen1_enabled: bool = False
+
+    def on_watering_finished(self) -> None:
+        """Called when a run ends by any route, including the coordinator's
+        wall-clock auto-close. Default no-op; classes holding run-scoped
+        resources override it to let go of them."""
 
     def __init__(
         self,
