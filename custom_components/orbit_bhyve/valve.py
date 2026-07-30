@@ -7,7 +7,6 @@ than switch.deck_sprinkler_zone.
 from __future__ import annotations
 
 import logging
-_LOGGER = logging.getLogger(__name__)
 from typing import Any
 
 from homeassistant.components.valve import (
@@ -23,6 +22,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import CONF_DEFAULT_DURATION, DEFAULT_DURATION, DOMAIN
 from .coordinator import BHyveDeviceCoordinator
 from .devices import BHyveHubDevice
+
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -91,23 +93,9 @@ class BHyveZoneValve(CoordinatorEntity[BHyveDeviceCoordinator], ValveEntity):
             or self.coordinator.preferred_duration_sec
             or self._default_duration
         )
-        started = await self.coordinator.device.start_watering(self._station, duration)
-        if started:
+        if await self.coordinator.device.start_watering(self._station, duration):
             await self.coordinator.async_request_refresh()
-        # Start flow regardless of the (race-prone) return value: the device
-        # acks asynchronously, so `started` is often False even on success.
-        device = self.coordinator.device
-        _LOGGER.debug("async_open_valve: started=%s device=%s has_flow_gen1=%s",
-                        started, type(device).__name__,
-                        getattr(device, "has_flow_gen1", "MISSING"))
-        if getattr(device, "has_flow_gen1", False):
-            _LOGGER.debug("async_open_valve: calling start_flow_subscription")
-            await device.start_flow_subscription()
 
     async def async_close_valve(self, **kwargs: Any) -> None:
-        stopped = await self.coordinator.device.stop_watering(self._station)
-        if stopped:
+        if await self.coordinator.device.stop_watering(self._station):
             await self.coordinator.async_request_refresh()
-        device = self.coordinator.device
-        if getattr(device, "has_flow_gen1", False):
-            await device.stop_flow_subscription()
