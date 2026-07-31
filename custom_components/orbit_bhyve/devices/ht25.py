@@ -34,16 +34,41 @@ INIT_INTER_STEP_SEC = 0.15
 
 BIND_TAIL = bytes.fromhex("f66910ff")
 
-# Empirical hub mesh_device_id per network key. The cloud /api/networks
-# response doesn't surface ble_device_id for hubs in our wizard cache, so
-# magic2 (which references the paired hub) needs this fallback. Values
-# captured from phone-app BTSnoop logs:
-#   Topology A (Deck, Hub Guest BR):    hub mesh_id 0xEB42 = 60226
-#   Topology B (Hill, Corner, Hub Garage): hub mesh_id 0x233D = 9021
-_HUB_MESH_BY_NETWORK_KEY = {
-    "f0983e39083a335644614ffb3bd67ee4": 0xEB42,
-    "bcd2ff1a23290e00482ee1d0d4376a95": 0x233D,
-}
+def parse_hub_mesh_overrides(raw: str) -> dict[str, int]:
+    """Parse the `hub_mesh_overrides` option into {MAC: hub_mesh_id}.
+
+    Format is comma-separated `MAC=id` pairs, id decimal or 0x-hex:
+        "AA:BB:CC:DD:EE:FF=0xEB42, 11:22:33:44:55:66=9021"
+
+    MACs are upper-cased so lookup matches BHyveBleDeviceBase.mac. Malformed
+    pairs are skipped with a warning rather than failing the whole entry — one
+    typo shouldn't take the integration down at setup. Kept HA-free so it is
+    unit-testable standalone (same rationale as accumulate_gallons)."""
+    out: dict[str, int] = {}
+    for chunk in (raw or "").split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        mac, sep, value = chunk.partition("=")
+        if not sep:
+            _LOGGER.warning("hub_mesh_overrides: missing '=' in %r, skipped", chunk)
+            continue
+        try:
+            hub_id = int(value.strip(), 0)
+        except ValueError:
+            _LOGGER.warning(
+                "hub_mesh_overrides: %r is not a number in %r, skipped",
+                value.strip(), chunk,
+            )
+            continue
+        if not 0 <= hub_id <= 0xFFFF:
+            _LOGGER.warning(
+                "hub_mesh_overrides: %d out of range (0..65535) in %r, skipped",
+                hub_id, chunk,
+            )
+            continue
+        out[mac.strip().upper()] = hub_id
+    return out
 
 
 class BHyveHT25Device(BHyveBleDeviceBase):
@@ -64,6 +89,11 @@ class BHyveHT25Device(BHyveBleDeviceBase):
     _pending_start_duration: int | None = None
     _pending_start_zone: int | None = None
 
+    # User-supplied hub mesh id, from the `hub_mesh_overrides` option. Only
+    # consulted when the cloud record has no bridge_device_id. Set in place by
+    # _async_update_listener, so it tracks an options edit without a reload.
+    hub_mesh_override: int | None = None
+
     @property
     def mesh_address(self) -> bytes:
         """The 2-byte device-address prefix on every command frame.
@@ -80,12 +110,13 @@ class BHyveHT25Device(BHyveBleDeviceBase):
         """The 2-byte hub-address embedded in the magic2 init step."""
         hub_id = self.hub_mesh_device_id
         if hub_id is None:
-            hub_id = _HUB_MESH_BY_NETWORK_KEY.get(self.network_key.lower())
+            hub_id = self.hub_mesh_override
             if hub_id is None:
                 _LOGGER.warning(
-                    "%s: hub_mesh_device_id unresolved (network_key not in fallback "
-                    "table); using 0x0000 in magic2. Init still completes with a "
-                    "placeholder hub id, but if START is dropped this is a suspect.",
+                    "%s: hub_mesh_device_id unresolved (cloud record has no "
+                    "bridge_device_id and no hub_mesh_overrides entry for this MAC); "
+                    "using 0x0000 in magic2. Init still completes with a placeholder "
+                    "hub id, but if START is dropped this is a suspect.",
                     self.mac,
                 )
                 hub_id = 0

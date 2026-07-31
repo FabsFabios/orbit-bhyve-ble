@@ -30,6 +30,7 @@ from .const import (
     CONF_DEVICES,
     CONF_EMAIL,
     CONF_FLOW_COUNTS_PER_GALLON,
+    CONF_HUB_MESH_OVERRIDES,
     CONF_MESH_STATUS_POLL,
     CONF_IDLE_DISCONNECT,
     CONF_INCLUDE,
@@ -38,6 +39,7 @@ from .const import (
     CONF_POLL_WATERING,
     DEFAULT_DURATION,
     DEFAULT_FLOW_COUNTS_PER_GALLON,
+    DEFAULT_HUB_MESH_OVERRIDES,
     DEFAULT_MESH_STATUS_POLL,
     DEFAULT_IDLE_DISCONNECT,
     DEFAULT_POLL_IDLE,
@@ -203,5 +205,9 @@ class BHyveOptionsFlow(config_entries.OptionsFlow):
                          default=opts.get(CONF_MESH_STATUS_POLL,
                                           DEFAULT_MESH_STATUS_POLL)):
                 bool,
+            vol.Optional(CONF_HUB_MESH_OVERRIDES,
+                         default=opts.get(CONF_HUB_MESH_OVERRIDES,
+                                          DEFAULT_HUB_MESH_OVERRIDES)):
+                str,
         })
         return self.async_show_form(step_id="init", data_schema=schema)

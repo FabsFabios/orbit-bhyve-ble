@@ -33,6 +33,7 @@ from .const import (
     CONF_EMAIL,
     CONF_FLOW_COUNTS_PER_GALLON,
     CONF_IDLE_DISCONNECT,
+    CONF_HUB_MESH_OVERRIDES,
     CONF_MESH_STATUS_POLL,
     CONF_PASSWORD,
     CONF_POLL_IDLE,
@@ -40,6 +41,7 @@ from .const import (
     DEFAULT_DURATION,
     DEFAULT_FLOW_COUNTS_PER_GALLON,
     DEFAULT_IDLE_DISCONNECT,
+    DEFAULT_HUB_MESH_OVERRIDES,
     DEFAULT_MESH_STATUS_POLL,
     DEFAULT_POLL_IDLE,
     DEFAULT_POLL_WATERING,
@@ -47,6 +49,7 @@ from .const import (
 )
 from .coordinator import BHyveDeviceCoordinator
 from .devices import BHyveHT25Device, UnsupportedModel, build_device
+from .devices.ht25 import parse_hub_mesh_overrides
 from .devices.base import (
     PROGRAM_SLOTS,
     SLOT_LETTERS,
@@ -93,6 +96,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_FLOW_COUNTS_PER_GALLON, DEFAULT_FLOW_COUNTS_PER_GALLON
     )
     mesh_status_poll = opts.get(CONF_MESH_STATUS_POLL, DEFAULT_MESH_STATUS_POLL)
+    hub_mesh_overrides = parse_hub_mesh_overrides(
+        opts.get(CONF_HUB_MESH_OVERRIDES, DEFAULT_HUB_MESH_OVERRIDES)
+    )
 
     runtime = EntryRuntime()
     for record in devices:
@@ -112,6 +118,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             continue
         if isinstance(device, BHyveHT25Device):
             device.active_status_poll = mesh_status_poll
+            device.hub_mesh_override = hub_mesh_overrides.get(device.mac)
         coord = BHyveDeviceCoordinator(
             hass, device, poll_idle_sec=poll_idle, poll_watering_sec=poll_watering,
         )
@@ -182,12 +189,16 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         CONF_FLOW_COUNTS_PER_GALLON, DEFAULT_FLOW_COUNTS_PER_GALLON
     )
     mesh_status_poll = opts.get(CONF_MESH_STATUS_POLL, DEFAULT_MESH_STATUS_POLL)
+    hub_mesh_overrides = parse_hub_mesh_overrides(
+        opts.get(CONF_HUB_MESH_OVERRIDES, DEFAULT_HUB_MESH_OVERRIDES)
+    )
     for coord in runtime.coordinators.values():
         coord.poll_idle = poll_idle
         coord.poll_watering = poll_watering
         coord.device.flow_counts_per_gallon = flow_counts_per_gallon
         if isinstance(coord.device, BHyveHT25Device):
             coord.device.active_status_poll = mesh_status_poll
+            coord.device.hub_mesh_override = hub_mesh_overrides.get(coord.device.mac)
         if coord.device.connection is not None:
             coord.device.connection._idle_sec = idle_disconnect
         # Re-apply the interval for the current state so a changed cadence takes

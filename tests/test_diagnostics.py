@@ -62,7 +62,7 @@ def test_redact_entry_shaped_dict():
             "password": "hunter2",
             "devices": [
                 {"cloud_id": "abc", "mac": "AA:BB:CC:DD:EE:FF",
-                 "network_key": "f0983e39083a335644614ffb3bd67ee4"},
+                 "network_key": "00112233445566778899aabbccddeeff"},
                 {"cloud_id": "hub", "mac": "11:22:33:44:55:66", "network_key": ""},
             ],
         },
