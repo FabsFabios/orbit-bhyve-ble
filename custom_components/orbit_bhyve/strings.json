@@ -45,7 +45,8 @@
           "poll_idle_sec": "State polling interval — idle (seconds)",
           "poll_watering_sec": "State polling interval — watering (seconds)",
           "flow_counts_per_gallon": "Flow calibration (sensor counts per gallon)",
-          "mesh_status_poll": "Mesh live status poll — HT25 connects over BLE on each idle poll to read watering state and battery (costs battery: ~96 connects/day at the default cadence)"
+          "mesh_status_poll": "Mesh live status poll — HT25 connects over BLE on each idle poll to read watering state and battery (costs battery: ~96 connects/day at the default cadence)",
+          "hub_mesh_overrides": "Hub mesh ID overrides — optional, only if the cloud doesn't report your hub's mesh ID. Comma-separated MAC=id pairs, decimal or 0x-hex (e.g. \"AA:BB:CC:DD:EE:FF=0xEB42\"). Leave blank unless watering commands are being dropped."
         }
       }
     }

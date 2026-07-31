@@ -45,6 +45,7 @@ CONF_POLL_IDLE = "poll_idle_sec"
 CONF_POLL_WATERING = "poll_watering_sec"
 CONF_FLOW_COUNTS_PER_GALLON = "flow_counts_per_gallon"
 CONF_MESH_STATUS_POLL = "mesh_status_poll"
+CONF_HUB_MESH_OVERRIDES = "hub_mesh_overrides"
 
 DEFAULT_DURATION = 600
 DEFAULT_IDLE_DISCONNECT = 60
@@ -58,6 +59,15 @@ DEFAULT_POLL_WATERING = 30
 # on AA cells), unlike the protobuf family whose poll is already a connect.
 # Without it, mesh idle state stays event-driven (acks + wall clock).
 DEFAULT_MESH_STATUS_POLL = False
+
+# HT25's magic2 init step references the paired hub's mesh id. The cloud
+# /api/networks response doesn't always surface bridge_device_id, and without
+# it the init falls back to a 0x0000 placeholder (see ht25.hub_mesh_address).
+# This option lets a user supply the value per device rather than the
+# integration shipping a lookup table. Format: comma-separated MAC=id pairs,
+# id decimal or 0x-hex, e.g. "AA:BB:CC:DD:EE:FF=0xEB42, 11:22:33:44:55:66=9021".
+# Read it off a BTSnoop capture of the vendor app's magic2 frame.
+DEFAULT_HUB_MESH_OVERRIDES = ""
 
 # Flow (Gen2 #59.#3) is a CUMULATIVE per-run volume counter in raw device units,
 # not gpm. To convert the counter to gallons, divide by this factor (exposed as
